@@ -19,7 +19,7 @@ The backend serves four endpoints, and their shapes are fixed:
 Backend:
 
 - `GROQ_API_KEY` is the Groq key. Put it in a file called `.env` in the repo root or in `backend/`. Never commit it. With no key the backend runs on a built-in stand-in, and `/health` says `demo`.
-- `DATABASE_URL` is for the Postgres step. It is not used yet. SQLite is the database for now, and it stays the fallback when this variable is unset.
+- `DATABASE_URL` is the Postgres connection string, for example from Neon. When it is set, the backend stores runs in Postgres. When it is unset, the backend uses SQLite, so local runs and the tests need nothing. Treat it like a key: keep it in `.env`, never commit it, and never paste it into a chat or a screenshot.
 - `TRIAGE_DB` is optional. It is the path of the SQLite file. The default is `backend/triage.db`.
 - `PORT` is optional. The default is 8000.
 
@@ -52,6 +52,16 @@ In a second terminal, from the repo root:
 
 Open http://127.0.0.1:7860. The Health tab shows which backend the page is talking to and what is switched on.
 
+## The database
+
+SQLite is the default. Postgres is used only when `DATABASE_URL` is set. The table, its keys, its index and the reasons are in `docs/schema.md`. All database code is in `backend/app/store.py`.
+
+To copy the rows from a SQLite file into Postgres once, run this from the `backend` folder with `DATABASE_URL` set. It is safe to run twice, because rows keep their id and a row that is already there is skipped.
+
+    .venv/bin/python scripts/migrate_sqlite_to_postgres.py
+
+Neon puts a free database to sleep after about five minutes without use, so the first request after a quiet spell is slow. The backend waits up to 10 seconds to connect and tries once more. If the database cannot be reached, `/runs` answers with a 503, `/health` reports the database as down, and `/classify` still answers but cannot save the run.
+
 ## The file you change to tune the assistant
 
 `backend/app/config.py`. It holds the prompt, the routing rules, the guardrails, the confidence floor and the token settings.
@@ -61,7 +71,7 @@ Open http://127.0.0.1:7860. The Health tab shows which backend the page is talki
     cd backend
     .venv/bin/pytest -q
 
-The tests run in demo mode on a temporary database. They never read `.env` and never call Groq.
+The tests run in demo mode on a temporary SQLite database. They never read `.env`, never call Groq and never touch Neon. Five more tests need a real Postgres database and are skipped unless `TEST_DATABASE_URL` is set. Point it at a scratch database, never the real one.
 
 ## Scoring log
 
@@ -69,4 +79,4 @@ The tests run in demo mode on a temporary database. They never read `.env` and n
 
 ## Deploying on Render
 
-Use two services, one with root directory `backend` and one with `frontend`. For both, the build command is `pip install -r requirements.txt`. The start command is `python main.py` for the backend and `python app.py` for the frontend. Set `PYTHON_VERSION` to a full version such as `3.12.3` on both. Render's documentation says a `.python-version` file is read from the root of the repo, and it does not say whether the files inside `backend/` and `frontend/` are read, so the environment variable is the safe choice. On the backend set `GROQ_API_KEY`. On the frontend set `BACKEND_URL` to the backend's public address.
+Use two services, one with root directory `backend` and one with `frontend`. For both, the build command is `pip install -r requirements.txt`. The start command is `python main.py` for the backend and `python app.py` for the frontend. Set `PYTHON_VERSION` to a full version such as `3.12.3` on both. Render's documentation says a `.python-version` file is read from the root of the repo, and it does not say whether the files inside `backend/` and `frontend/` are read, so the environment variable is the safe choice. On the backend set `GROQ_API_KEY` and `DATABASE_URL`. On the frontend set `BACKEND_URL` to the backend's public address.
