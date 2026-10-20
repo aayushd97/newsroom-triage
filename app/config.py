@@ -87,6 +87,13 @@ KNOWLEDGE_THRESHOLD = 0.10
 MODEL = "openai/gpt-oss-120b"
 TEMPERATURE = 0
 
+# This model thinks before it answers, and the thinking counts against the
+# reply limit. If the limit is too small the thinking uses it all and the
+# answer comes back empty. "low" thinks briefly. MAX_TOKENS is a ceiling, not
+# a charge: you only pay for the tokens actually used.
+REASONING_EFFORT = "low"
+MAX_TOKENS = 200
+
 # Groq free tier limits for this model, per minute. The app waits rather than
 # going over them. A 429 from Groq means slow down, not a bad key.
 REQUESTS_PER_MINUTE = 30

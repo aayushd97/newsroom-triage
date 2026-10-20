@@ -135,7 +135,8 @@ def _groq_classify(text, prompt, passages):
     body = {
         "model": config.MODEL,
         "temperature": config.TEMPERATURE,
-        "max_tokens": 80,
+        "max_tokens": config.MAX_TOKENS,
+        "reasoning_effort": config.REASONING_EFFORT,
         "messages": [
             {"role": "system", "content": prompt + context},
             {"role": "user", "content":
