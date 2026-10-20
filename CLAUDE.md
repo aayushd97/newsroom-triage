@@ -15,7 +15,8 @@
 
 ## Current status
 
-- Done: setup; data/my_labels.csv; scoring on my_label with official_label kept; Groq pacing and retry-after; blocked answers scored as BLOCKED (tests/test_scoring.py); v1 token budget (reasoning_effort low, max_tokens 200); v2 SYSTEM_PROMPT rewritten from my Week 1 rules, low-confidence line at 0.6 (Claude Code's number, not mine). Tests: 19 passed, 1 failed (the confidence floor test, left on purpose).
-- Latest versions.md row: v1, 21/30, 0.7000, kappa 0.6029, 1 blocked. v2 not yet appended. v2 live runs: 26/30, 0.8667, kappa 0.8193, 0 blocked, same in both runs, same four wrong items (ids 18, 23, 28, 29) in both. Per-item results in results/v2_scoring.csv (first run).
-- Findings so far: prompt tokens per request went from 229 (v1) to 414 (v2). Every v2 answer had confidence 0.85 or above, so confidence does not separate right from wrong yet and no floor can be chosen from this data. Retrieved notes from categories.md are unchanged and may disagree with the prompt.
-- Next step: append the v2 row once approved, then the CONFIDENCE_FLOOR step. C2 not started.
+- Done: setup; data/my_labels.csv; scoring on my_label with official_label kept; Groq pacing and retry-after; blocked answers scored as BLOCKED (tests/test_scoring.py); v1 token budget (reasoning_effort low, max_tokens 200); v2 SYSTEM_PROMPT from my Week 1 rules (0.6 low-confidence line is Claude Code's number, not mine); results/floor_table.md built offline; v3 CONFIDENCE_FLOOR = 0.6 committed. Tests: 20 passed.
+- Latest versions.md row: v2, 26/30, 0.8667, kappa 0.8193, 0 blocked. v3 live run (floor 0.6): 26/30, 0.8667, kappa 0.8198, 0 blocked, not yet appended and its CSV is not saved. Same four wrong ids (18, 23, 28, 29) as v2. Item 28 changed answer between runs (Sci/Tech then Business), still wrong.
+- Findings so far: prompt tokens per request 414 since v2. In v3 the lowest confidence on the 30 items was 0.70, so the floor blocked nothing. Hostile inputs (report-only): random characters and recipe were blocked by the floor, French was answered World at 0.95, and a two-category headline got a question back from the model, which the parser turned into World at 0.5, so only the floor stopped it.
+- Estimated Groq use today: about 180 requests and about 69,000 tokens (estimate, not logged exactly).
+- Next step: append v3 row once approved. C2 not started.
