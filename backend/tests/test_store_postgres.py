@@ -58,6 +58,16 @@ def test_a_failed_postgres_save_does_not_stop_the_answer(monkeypatch):
     tr = engine.classify("Striker scores a goal in the cup match")
     assert tr.final == "Sports"
 
+def test_a_save_against_an_unreachable_database_gives_up_within_about_five_seconds(monkeypatch):
+    import time
+    # 10.255.255.1 is not routable, so the connect hangs until the timeout, or fails at once
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@10.255.255.1:5432/d")
+    assert store.SAVE_TIMEOUT == 4 and store.CONNECT_TIMEOUT == 10   # reads keep the longer timeout
+    t0 = time.time()
+    with pytest.raises(store.DatabaseUnavailable):
+        store.save_run(_trace())
+    assert time.time() - t0 < 5.5, "a save must make one 4 second attempt, not retry"
+
 
 # ------------------------------------------------------- need a real scratch database
 @needs_db

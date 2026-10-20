@@ -9,8 +9,9 @@ import os, json, time, sqlite3, pathlib, threading
 HERE = pathlib.Path(__file__).parent
 DB_PATH = os.environ.get("TRIAGE_DB", str(HERE.parent / "triage.db"))
 
-CONNECT_TIMEOUT = 10   # seconds. Neon can take a few seconds to wake up.
-RETRY_PAUSE = 1.0      # seconds between the first failed connect and the one retry
+CONNECT_TIMEOUT = 10   # seconds, for reads. Neon can take a few seconds to wake up.
+RETRY_PAUSE = 1.0      # seconds between the first failed read connect and the one retry
+SAVE_TIMEOUT = 4       # seconds, for saves: one attempt, no retry (see save_run)
 
 
 class StoreError(RuntimeError):
@@ -104,32 +105,33 @@ def _wrap(e):
     primary = getattr(getattr(e, "diag", None), "message_primary", None) or "database error"
     return StoreError(f"{type(e).__name__}: {primary}")
 
-def _pg_connect():
-    """Open a connection. One retry if it fails, because a sleeping Neon database
-    may time out the first attempt while it wakes."""
+def _pg_connect(timeout=None, retry=True):
+    """Open a connection. By default there is one retry if it fails, because a
+    sleeping Neon database may time out the first attempt while it wakes."""
     import psycopg
-    for attempt in (1, 2):
+    timeout = CONNECT_TIMEOUT if timeout is None else timeout
+    for attempt in ((1, 2) if retry else (1,)):
         try:
             # prepare_threshold=None switches prepared statements off. Neon's pooled
             # (PgBouncer) endpoint supports them in current versions, but they buy
             # nothing here and switching them off rules out a whole class of errors.
-            return psycopg.connect(_url(), connect_timeout=CONNECT_TIMEOUT,
+            return psycopg.connect(_url(), connect_timeout=timeout,
                                    prepare_threshold=None)
         except psycopg.OperationalError as e:
             if (e.sqlstate or "").startswith("28"):     # bad login, retrying will not help
                 raise DatabaseUnavailable("the database rejected the login") from None
-            if attempt == 2:
+            if attempt == (2 if retry else 1):
                 raise DatabaseUnavailable("could not connect to the database") from None
             time.sleep(RETRY_PAUSE)
         except (psycopg.Error, ValueError):
             raise StoreError("DATABASE_URL could not be used, check its format") from None
 
-def _pg_open():
+def _pg_open(timeout=None, retry=True):
     """A connection with the table in place. The table is created once per
     process, and again on the next call if that failed."""
     global _ready
     import psycopg
-    conn = _pg_connect()
+    conn = _pg_connect(timeout, retry)
     if not _ready:
         with _ready_lock:
             if not _ready:
@@ -150,7 +152,9 @@ def _clean(s):
 def _pg_save(tr):
     import psycopg
     from psycopg.types.json import Jsonb
-    conn = _pg_open()
+    # A save makes one attempt with a short timeout. /classify waits for it, and
+    # a database that is down must not add 21 seconds to every answer.
+    conn = _pg_open(timeout=SAVE_TIMEOUT, retry=False)
     try:
         with conn:   # commits, or rolls back on an error, then closes
             # created_at is left out on purpose, the database fills it in
