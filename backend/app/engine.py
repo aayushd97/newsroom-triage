@@ -1,35 +1,17 @@
 """The working parts. Option A never needs to read this file."""
-import os, re, json, time, sqlite3, pathlib, math
+import os, re, json, time, pathlib, math
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from . import config
 
 HERE = pathlib.Path(__file__).parent
-DB_PATH = os.environ.get("TRIAGE_DB", str(HERE.parent / "triage.db"))
 CATS = ["World", "Sports", "Business", "Sci/Tech"]
 
-
-# ---------------------------------------------------------------- storage
-def db():
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
-
-def init_db():
-    with db() as c:
-        c.execute("""CREATE TABLE IF NOT EXISTS runs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            headline TEXT NOT NULL,
-            branch TEXT NOT NULL,
-            answer TEXT,
-            confidence REAL,
-            passages TEXT,
-            guardrails TEXT,
-            blocked INTEGER NOT NULL DEFAULT 0,
-            mode TEXT NOT NULL,
-            ms INTEGER NOT NULL)""")
+# The database code lives in store.py. These names stay here because callers
+# and tests already use engine.db() and engine.init_db().
+from . import store
+from .store import db, init_db
 
 
 # -------------------------------------------------------------- retrieval
@@ -278,13 +260,7 @@ def classify(headline):
 
 def _save(tr):
     try:
-        with db() as c:
-            c.execute("""INSERT INTO runs (created_at, headline, branch, answer,
-                         confidence, passages, guardrails, blocked, mode, ms)
-                         VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                      (time.strftime("%Y-%m-%d %H:%M:%S"), tr.headline, tr.branch,
-                       tr.final, tr.confidence, json.dumps(tr.passages),
-                       json.dumps(tr.guardrails), int(tr.blocked), tr.mode, tr.ms))
+        store.save_run(tr)
     except Exception:
         pass   # a broken database must never stop an answer
 
