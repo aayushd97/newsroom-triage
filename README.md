@@ -89,12 +89,12 @@ The tests run in demo mode on a temporary SQLite database. They never read `.env
 ## Live deployment and measurements
 
 - Backend: https://newsroom-triage-backend.onrender.com
-- Frontend: add the live address here. I was not given it when I wrote this section.
+- Frontend: https://newsroom-triage-frontend.onrender.com/
 
 Measured on the deployed backend on 20 October 2026. The raw tables are in `results/`.
 
 - Warm latency, 20 classify requests, 4 seconds apart: median 784 ms, fastest 452 ms, worst 1,212 ms, average 761 ms as seen from my laptop. The backend's own `ms` field was 606 ms median. It stops before the database save, so the difference of about 150 ms is the network, Render and the save. See `results/latency_deployed.md`.
-- Cold start after 65 idle minutes: the first request, `GET /health`, took 32.5 seconds, and a classify straight after took 0.9 seconds. Both Render and Neon had gone to sleep, so the 32.5 seconds includes both and I could not separate them. The frontend page load was not measured. See `results/cold_start_deployed.md`.
+- Cold start after 65 idle minutes: the first request, `GET /health`, took 32.5 seconds, and a classify straight after took 0.9 seconds. Both Render and Neon had gone to sleep, so the 32.5 seconds includes both and I could not separate them. The frontend page load took 131 ms but it was already awake, so it is not a cold start figure. See `results/cold_start_deployed.md`.
 - Tokens per classify request: about 414 prompt and 50 completion, taken from the 30 item scoring run `results/v3_scoring.csv` (12,432 and 1,504 tokens over 30 items), because the backend does not return token counts.
 - Cost of 10,000 classifications a day on `openai/gpt-oss-120b`, at $0.15 per million input tokens and $0.60 per million output tokens from Groq's models page: 414.4 x 0.15 + 50.1 x 0.60 is about 92 millionths of a dollar per request, so about $0.92 a day, or about $28 over 30 days. I am fairly sure of the prices but Groq's pricing page did not list them, so check the console before quoting them.
 - The free tier does not fit 10,000 a day. Groq's limits page lists 1,000 requests and 200,000 tokens a day for this model, and 10,000 requests use about 4.6 million tokens, which is 23 times the token limit. The token limit allows about 430 requests a day.
