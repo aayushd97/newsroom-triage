@@ -21,4 +21,4 @@ Rule used by the app: an answer is blocked when confidence is below the floor. A
 
 Run 1 and run 2 are the same prompt and settings. They differ only because confidence numbers vary slightly between calls. The answers were identical.
 
-Confidence values seen: run 1 [np.float64(0.92), np.float64(0.95), np.float64(0.99)], run 2 [np.float64(0.85), np.float64(0.92), np.float64(0.95), np.float64(0.96), np.float64(0.99)].
+Confidence values seen: run 1 [0.92, 0.95, 0.99], run 2 [0.85, 0.92, 0.95, 0.96, 0.99].
