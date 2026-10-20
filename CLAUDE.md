@@ -15,6 +15,7 @@
 
 ## Current status
 
-- Done: setup on branch week2-work (this file, results/versions.md, docs/schema.md template). No app code changed yet.
-- Latest versions.md row: none yet.
-- Next step: C1, make the three failing tests in tests/test_config.py pass by editing app/config.py.
+- Done: setup; data/my_labels.csv copied; scoring uses my_label with official_label kept; Groq calls paced (30 req, 8,000 tokens per minute) with retry-after on 429; blocked answers scored as BLOCKED; tests/test_scoring.py added. Tests: 3 failed (the planted config tests), 17 passed.
+- Latest runs (not yet in versions.md): demo 18/30, 0.600, kappa 0.4322, 0 blocked. Live v0 5/30, 0.1667, kappa 0.1156, 24 blocked.
+- Known cause of the 24 blocks: with retrieved notes in the prompt, gpt-oss-120b spends about 78 of max_tokens=80 on reasoning, finish_reason is "length", content is empty, parse gives UNPARSED.
+- Next step: user decides whether to append the v0 row, then the C1 config.py fixes (prompt, tie-break, floor) and the max_tokens or reasoning_effort fix. C2 not started.
