@@ -27,7 +27,14 @@
 # -----------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """
-You sort news. Say which category it is.
+Sort a news item into exactly one category: World, Sports, Business or Sci/Tech.
+
+World: mainly about governments, politicians, armies, diplomacy or disasters, in any country. If politics is the reason behind the story, choose World even when it affects another field.
+Sports: mainly about a game, player, team or competition, including transfers and injuries. It must be about the sport itself, not its finances or politics.
+Business: mainly about the money side of any company: profits, share prices, takeovers, sales, job cuts, prices.
+Sci/Tech: mainly about a discovery, a study, a gadget, software or a space mission, and what it does or how it works.
+
+If two categories fit, ask which newspaper section the story would sit in and choose that one. If you still cannot decide, choose the closest fit and give a low confidence, below 0.6. Give a high confidence only when one category clearly fits.
 """
 
 
