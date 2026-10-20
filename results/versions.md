@@ -1,2 +1,2 @@
-| v | What changed | Accuracy | Kappa | Blocked |
-|---|---|---|---|---|
+| v | What changed | Correct /30 | Accuracy | Kappa | Blocked |
+|---|---|---|---|---|---|
