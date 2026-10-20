@@ -57,7 +57,52 @@ def _retrieve_overlap(question):
     return scored[: config.KNOWLEDGE_PASSAGES]
 
 
-_METHODS = {"overlap": _retrieve_overlap}
+def _bm25_idf(n_passages, n_with_term):
+    """How rare a word is across the passages, always above zero.
+
+    The textbook form is ln((N - n + 0.5) / (n + 0.5)). With only a handful of
+    passages it goes to zero for a word in half of them and below zero for a
+    word in more than half, so matching a common word would lower the score.
+    Adding 1 inside the log keeps the same order (rarer is higher) and keeps
+    every value above zero."""
+    return math.log(1 + (n_passages - n_with_term + 0.5) / (n_with_term + 0.5))
+
+def _retrieve_bm25(question):
+    """BM25, written by hand. Same passages and same word splitting as the
+    overlap method, so only the scoring differs. Each distinct word in the
+    question is counted once, as overlap does."""
+    q = set(_tokens(question))
+    if not q:
+        return []
+    docs = [(fname, heading, body, _tokens(heading + " " + body))
+            for fname, heading, body in _chunks()]
+    docs = [d for d in docs if d[3]]
+    if not docs:
+        return []
+    n = len(docs)
+    avg_len = sum(len(d[3]) for d in docs) / n
+    in_passages = {}                         # word -> how many passages contain it
+    for d in docs:
+        for w in set(d[3]):
+            in_passages[w] = in_passages.get(w, 0) + 1
+    k1, b = config.BM25_K1, config.BM25_B
+    scored = []
+    for fname, heading, body, toks in docs:
+        length = len(toks)
+        score = 0.0
+        for w in q:
+            tf = toks.count(w)
+            if tf:
+                score += (_bm25_idf(n, in_passages[w]) * tf * (k1 + 1)
+                          / (tf + k1 * (1 - b + b * length / avg_len)))
+        if score >= config.BM25_THRESHOLD:
+            scored.append({"file": fname, "heading": heading,
+                           "text": body[:400], "score": round(score, 3)})
+    scored.sort(key=lambda d: -d["score"])
+    return scored[: config.KNOWLEDGE_PASSAGES]
+
+
+_METHODS = {"overlap": _retrieve_overlap, "bm25": _retrieve_bm25}
 
 def retrieve(question):
     """Find passages with the method chosen by config.RETRIEVAL_METHOD."""

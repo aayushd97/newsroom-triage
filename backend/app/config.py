@@ -102,6 +102,16 @@ KNOWLEDGE_THRESHOLD = 0.10
 # Switch between them to compare. Both use the same passages and the same words.
 RETRIEVAL_METHOD = "overlap"
 
+# BM25 settings. BM25 scores add up over the words and have no fixed top, so
+# they need their own threshold, not KNOWLEDGE_THRESHOLD. 0.7 means a passage
+# needs at least one fairly rare word in common (one found in at most two of
+# the six passages), or several weaker words. It was not tuned on the 30 items.
+BM25_THRESHOLD = 0.7
+# k1: how fast repeating a word stops helping. Higher means repeats count longer.
+BM25_K1 = 1.5
+# b: how much a long passage is marked down, from 0 (not at all) to 1 (fully).
+BM25_B = 0.75
+
 MODEL = "openai/gpt-oss-120b"
 TEMPERATURE = 0
 
