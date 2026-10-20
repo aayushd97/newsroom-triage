@@ -27,7 +27,14 @@
 # -----------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """
-You sort news. Say which category it is.
+Sort a news item into exactly one category: World, Sports, Business or Sci/Tech.
+
+World: mainly about governments, politicians, armies, diplomacy or disasters, in any country. If politics is the reason behind the story, choose World even when it affects another field.
+Sports: mainly about a game, player, team or competition, including transfers and injuries. It must be about the sport itself, not its finances or politics.
+Business: mainly about the money side of any company: profits, share prices, takeovers, sales, job cuts, prices.
+Sci/Tech: mainly about a discovery, a study, a gadget, software or a space mission, and what it does or how it works.
+
+If two categories fit, ask which newspaper section the story would sit in and choose that one. If you still cannot decide, choose the closest fit and give a low confidence, below 0.6. Give a high confidence only when one category clearly fits.
 """
 
 
@@ -65,7 +72,10 @@ ALLOWED_CATEGORIES = ["World", "Sports", "Business", "Sci/Tech"]
 
 # If the model is less sure than this, the app says it does not know
 # instead of guessing. 0.0 means never refuse. 1.0 means always refuse.
-CONFIDENCE_FLOOR = 0.0
+# 0.6 matches the prompt's own definition of low confidence. It was not tuned
+# on the 30 items. In v2 no answer fell below 0.85, so at this floor nothing
+# is blocked yet and it only acts as a safety net for inputs that are not news.
+CONFIDENCE_FLOOR = 0.6
 
 
 # -----------------------------------------------------------------------------
@@ -84,5 +94,35 @@ KNOWLEDGE_PASSAGES = 2
 # How sure a keyword match has to be before a passage counts as relevant.
 KNOWLEDGE_THRESHOLD = 0.10
 
+# How the app finds the passages to show the model.
+#   "overlap"  counts the words the question shares with a passage. This is the
+#              original method. It only knows words, not which words matter.
+#   "bm25"     a standard search score. Rare words count for more than common
+#              ones, and repeating a word helps less each time.
+# Switch between them to compare. Both use the same passages and the same words.
+RETRIEVAL_METHOD = "overlap"
+
+# BM25 settings. BM25 scores add up over the words and have no fixed top, so
+# they need their own threshold, not KNOWLEDGE_THRESHOLD. 0.7 means a passage
+# needs at least one fairly rare word in common (one found in at most two of
+# the six passages), or several weaker words. It was not tuned on the 30 items.
+BM25_THRESHOLD = 0.7
+# k1: how fast repeating a word stops helping. Higher means repeats count longer.
+BM25_K1 = 1.5
+# b: how much a long passage is marked down, from 0 (not at all) to 1 (fully).
+BM25_B = 0.75
+
 MODEL = "openai/gpt-oss-120b"
 TEMPERATURE = 0
+
+# This model thinks before it answers, and the thinking counts against the
+# reply limit. If the limit is too small the thinking uses it all and the
+# answer comes back empty. "low" thinks briefly. MAX_TOKENS is a ceiling, not
+# a charge: you only pay for the tokens actually used.
+REASONING_EFFORT = "low"
+MAX_TOKENS = 200
+
+# Groq free tier limits for this model, per minute. The app waits rather than
+# going over them. A 429 from Groq means slow down, not a bad key.
+REQUESTS_PER_MINUTE = 30
+TOKENS_PER_MINUTE = 8000

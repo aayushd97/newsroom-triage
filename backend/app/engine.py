@@ -1,35 +1,19 @@
 """The working parts. Option A never needs to read this file."""
-import os, re, json, time, sqlite3, pathlib, math
+import os, re, json, time, pathlib, math, logging
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from . import config
 
+log = logging.getLogger("triage")
+
 HERE = pathlib.Path(__file__).parent
-DB_PATH = os.environ.get("TRIAGE_DB", str(HERE.parent / "triage.db"))
 CATS = ["World", "Sports", "Business", "Sci/Tech"]
 
-
-# ---------------------------------------------------------------- storage
-def db():
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
-
-def init_db():
-    with db() as c:
-        c.execute("""CREATE TABLE IF NOT EXISTS runs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT NOT NULL,
-            headline TEXT NOT NULL,
-            branch TEXT NOT NULL,
-            answer TEXT,
-            confidence REAL,
-            passages TEXT,
-            guardrails TEXT,
-            blocked INTEGER NOT NULL DEFAULT 0,
-            mode TEXT NOT NULL,
-            ms INTEGER NOT NULL)""")
+# The database code lives in store.py. These names stay here because callers
+# and tests already use engine.db() and engine.init_db().
+from . import store
+from .store import db, init_db
 
 
 # -------------------------------------------------------------- retrieval
@@ -55,7 +39,7 @@ def _chunks():
             out.append((name, current, " ".join(buf).strip()))
     return [c for c in out if c[2]]
 
-def retrieve(question):
+def _retrieve_overlap(question):
     """Plain keyword overlap. Deliberately simple so its failures are visible."""
     q = set(_tokens(question))
     if not q:
@@ -71,6 +55,63 @@ def retrieve(question):
                            "text": body[:400], "score": round(score, 3)})
     scored.sort(key=lambda d: -d["score"])
     return scored[: config.KNOWLEDGE_PASSAGES]
+
+
+def _bm25_idf(n_passages, n_with_term):
+    """How rare a word is across the passages, always above zero.
+
+    The textbook form is ln((N - n + 0.5) / (n + 0.5)). With only a handful of
+    passages it goes to zero for a word in half of them and below zero for a
+    word in more than half, so matching a common word would lower the score.
+    Adding 1 inside the log keeps the same order (rarer is higher) and keeps
+    every value above zero."""
+    return math.log(1 + (n_passages - n_with_term + 0.5) / (n_with_term + 0.5))
+
+def _retrieve_bm25(question):
+    """BM25, written by hand. Same passages and same word splitting as the
+    overlap method, so only the scoring differs. Each distinct word in the
+    question is counted once, as overlap does."""
+    q = set(_tokens(question))
+    if not q:
+        return []
+    docs = [(fname, heading, body, _tokens(heading + " " + body))
+            for fname, heading, body in _chunks()]
+    docs = [d for d in docs if d[3]]
+    if not docs:
+        return []
+    n = len(docs)
+    avg_len = sum(len(d[3]) for d in docs) / n
+    in_passages = {}                         # word -> how many passages contain it
+    for d in docs:
+        for w in set(d[3]):
+            in_passages[w] = in_passages.get(w, 0) + 1
+    k1, b = config.BM25_K1, config.BM25_B
+    scored = []
+    for fname, heading, body, toks in docs:
+        length = len(toks)
+        score = 0.0
+        for w in q:
+            tf = toks.count(w)
+            if tf:
+                score += (_bm25_idf(n, in_passages[w]) * tf * (k1 + 1)
+                          / (tf + k1 * (1 - b + b * length / avg_len)))
+        if score >= config.BM25_THRESHOLD:
+            scored.append({"file": fname, "heading": heading,
+                           "text": body[:400], "score": round(score, 3)})
+    scored.sort(key=lambda d: -d["score"])
+    return scored[: config.KNOWLEDGE_PASSAGES]
+
+
+_METHODS = {"overlap": _retrieve_overlap, "bm25": _retrieve_bm25}
+
+def retrieve(question):
+    """Find passages with the method chosen by config.RETRIEVAL_METHOD."""
+    try:
+        method = _METHODS[config.RETRIEVAL_METHOD]
+    except KeyError:
+        raise ValueError(f"RETRIEVAL_METHOD must be one of {sorted(_METHODS)}, "
+                         f"not {config.RETRIEVAL_METHOD!r}") from None
+    return method(question)
 
 
 # ---------------------------------------------------------------- routing
@@ -104,6 +145,27 @@ def _demo_classify(text):
     conf = min(0.35 + 0.15 * score, 0.95)
     return best, round(conf, 2)
 
+class RateLimited(RuntimeError):
+    """Groq answered 429. Not a bad key: wait retry_after seconds and try again."""
+    def __init__(self, retry_after):
+        super().__init__(f"rate limited by Groq, retry after {retry_after}s")
+        self.retry_after = retry_after
+
+_window = []   # [time, tokens] for each live call in the last minute
+
+def _pace(estimate):
+    """Wait until one more call fits inside the per-minute request and token limits."""
+    while True:
+        now = time.time()
+        _window[:] = [w for w in _window if now - w[0] < 60]
+        used = sum(w[1] for w in _window)
+        if not _window or (len(_window) < config.REQUESTS_PER_MINUTE
+                           and used + estimate <= config.TOKENS_PER_MINUTE):
+            entry = [now, estimate]
+            _window.append(entry)
+            return entry
+        time.sleep(max(0.1, 60 - (now - _window[0][0]) + 0.05))
+
 def _groq_classify(text, prompt, passages):
     import requests
     key = os.environ["GROQ_API_KEY"]
@@ -114,7 +176,8 @@ def _groq_classify(text, prompt, passages):
     body = {
         "model": config.MODEL,
         "temperature": config.TEMPERATURE,
-        "max_tokens": 80,
+        "max_tokens": config.MAX_TOKENS,
+        "reasoning_effort": config.REASONING_EFFORT,
         "messages": [
             {"role": "system", "content": prompt + context},
             {"role": "user", "content":
@@ -122,13 +185,22 @@ def _groq_classify(text, prompt, passages):
              'Reply with JSON only: {"category": "...", "confidence": 0.0}'},
         ],
     }
+    # Rough guess of the call's size: about 3 characters a token, plus the reply cap.
+    sent = sum(len(m["content"]) for m in body["messages"])
+    entry = _pace(sent // 3 + body["max_tokens"])
     r = requests.post("https://api.groq.com/openai/v1/chat/completions",
                       headers={"Authorization": f"Bearer {key}"},
                       json=body, timeout=60)
     if r.status_code == 429:
-        raise RuntimeError(r.headers.get("retry-after", "0"))
+        try:
+            wait = float(r.headers.get("retry-after", ""))
+        except ValueError:
+            wait = 0.0
+        raise RateLimited(wait)
     r.raise_for_status()
-    raw = r.json()["choices"][0]["message"]["content"]
+    data = r.json()
+    entry[1] = data.get("usage", {}).get("total_tokens", entry[1])
+    raw = data["choices"][0]["message"]["content"]
     return _parse(raw)
 
 def _parse(raw):
@@ -200,6 +272,7 @@ class Trace:
     ms: int = 0
 
 SAFE = "I am not able to answer that one."
+BLOCKED = "BLOCKED"   # how a blocked answer is counted when scoring
 
 def classify(headline):
     t0 = time.time()
@@ -246,15 +319,11 @@ def classify(headline):
 
 def _save(tr):
     try:
-        with db() as c:
-            c.execute("""INSERT INTO runs (created_at, headline, branch, answer,
-                         confidence, passages, guardrails, blocked, mode, ms)
-                         VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                      (time.strftime("%Y-%m-%d %H:%M:%S"), tr.headline, tr.branch,
-                       tr.final, tr.confidence, json.dumps(tr.passages),
-                       json.dumps(tr.guardrails), int(tr.blocked), tr.mode, tr.ms))
-    except Exception:
-        pass   # a broken database must never stop an answer
+        store.save_run(tr)
+    except Exception as e:
+        # A broken database must never stop an answer, but a rejected row must
+        # not vanish silently either. Log the error type and message only.
+        log.warning("could not save run: %s: %s", type(e).__name__, e)
 
 
 # ---------------------------------------------------------------- scoring
@@ -263,14 +332,25 @@ def score(golden):
     from sklearn.metrics import cohen_kappa_score
     rows, preds, truth = [], [], []
     for g in golden:
-        tr = classify(g["text"])
+        for attempt in range(4):
+            try:
+                tr = classify(g["text"])
+                break
+            except RateLimited as e:
+                if attempt == 3:
+                    raise
+                time.sleep(e.retry_after or 5)
+        # A blocked answer is its own label, so it counts against accuracy and
+        # kappa alike. No labels= list: every item stays in kappa, whatever it got.
+        got = BLOCKED if tr.blocked else tr.final
         rows.append({"text": g["text"][:90], "expected": g["label"],
-                     "got": tr.final, "ok": tr.final == g["label"],
+                     "official": g.get("official", ""), "got": got, "ok": got == g["label"],
                      "branch": tr.branch, "confidence": tr.confidence})
-        preds.append(tr.final)
+        preds.append(got)
         truth.append(g["label"])
     correct = sum(r["ok"] for r in rows)
-    k = cohen_kappa_score(truth, preds, labels=CATS) if len(set(truth)) > 1 else 0.0
+    k = cohen_kappa_score(truth, preds) if len(set(truth)) > 1 else 0.0
     return {"rows": rows, "correct": correct, "total": len(rows),
             "accuracy": round(correct / len(rows), 4) if rows else 0.0,
-            "kappa": round(float(k), 4)}
+            "kappa": round(float(k), 4),
+            "blocked": sum(p == BLOCKED for p in preds)}
