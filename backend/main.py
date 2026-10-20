@@ -99,10 +99,9 @@ def health():
     files = [f for f in config.KNOWLEDGE_FILES
              if (engine.HERE / "knowledge" / f).exists()]
     try:
-        store.init_db()
-        database = {"kind": "sqlite", "status": "ok", "rows": store.count_runs()}
+        database = {"kind": store.kind(), "status": "ok", "rows": store.count_runs()}
     except Exception:
-        database = {"kind": "sqlite", "status": "down"}
+        database = {"kind": store.kind(), "status": "down"}
     return {"mode": "live" if engine.live_mode() else "demo",
             "knowledge": files,
             "missing": [f for f in config.KNOWLEDGE_FILES if f not in files],
