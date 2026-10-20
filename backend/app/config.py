@@ -94,6 +94,14 @@ KNOWLEDGE_PASSAGES = 2
 # How sure a keyword match has to be before a passage counts as relevant.
 KNOWLEDGE_THRESHOLD = 0.10
 
+# How the app finds the passages to show the model.
+#   "overlap"  counts the words the question shares with a passage. This is the
+#              original method. It only knows words, not which words matter.
+#   "bm25"     a standard search score. Rare words count for more than common
+#              ones, and repeating a word helps less each time.
+# Switch between them to compare. Both use the same passages and the same words.
+RETRIEVAL_METHOD = "overlap"
+
 MODEL = "openai/gpt-oss-120b"
 TEMPERATURE = 0
 

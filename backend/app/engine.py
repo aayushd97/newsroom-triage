@@ -39,7 +39,7 @@ def _chunks():
             out.append((name, current, " ".join(buf).strip()))
     return [c for c in out if c[2]]
 
-def retrieve(question):
+def _retrieve_overlap(question):
     """Plain keyword overlap. Deliberately simple so its failures are visible."""
     q = set(_tokens(question))
     if not q:
@@ -55,6 +55,18 @@ def retrieve(question):
                            "text": body[:400], "score": round(score, 3)})
     scored.sort(key=lambda d: -d["score"])
     return scored[: config.KNOWLEDGE_PASSAGES]
+
+
+_METHODS = {"overlap": _retrieve_overlap}
+
+def retrieve(question):
+    """Find passages with the method chosen by config.RETRIEVAL_METHOD."""
+    try:
+        method = _METHODS[config.RETRIEVAL_METHOD]
+    except KeyError:
+        raise ValueError(f"RETRIEVAL_METHOD must be one of {sorted(_METHODS)}, "
+                         f"not {config.RETRIEVAL_METHOD!r}") from None
+    return method(question)
 
 
 # ---------------------------------------------------------------- routing
