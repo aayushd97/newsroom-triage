@@ -72,7 +72,10 @@ ALLOWED_CATEGORIES = ["World", "Sports", "Business", "Sci/Tech"]
 
 # If the model is less sure than this, the app says it does not know
 # instead of guessing. 0.0 means never refuse. 1.0 means always refuse.
-CONFIDENCE_FLOOR = 0.0
+# 0.6 matches the prompt's own definition of low confidence. It was not tuned
+# on the 30 items. In v2 no answer fell below 0.85, so at this floor nothing
+# is blocked yet and it only acts as a safety net for inputs that are not news.
+CONFIDENCE_FLOOR = 0.6
 
 
 # -----------------------------------------------------------------------------
