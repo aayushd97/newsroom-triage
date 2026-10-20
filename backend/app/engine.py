@@ -1,9 +1,11 @@
 """The working parts. Option A never needs to read this file."""
-import os, re, json, time, pathlib, math
+import os, re, json, time, pathlib, math, logging
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from . import config
+
+log = logging.getLogger("triage")
 
 HERE = pathlib.Path(__file__).parent
 CATS = ["World", "Sports", "Business", "Sci/Tech"]
@@ -261,8 +263,10 @@ def classify(headline):
 def _save(tr):
     try:
         store.save_run(tr)
-    except Exception:
-        pass   # a broken database must never stop an answer
+    except Exception as e:
+        # A broken database must never stop an answer, but a rejected row must
+        # not vanish silently either. Log the error type and message only.
+        log.warning("could not save run: %s: %s", type(e).__name__, e)
 
 
 # ---------------------------------------------------------------- scoring
