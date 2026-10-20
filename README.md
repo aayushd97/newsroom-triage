@@ -62,6 +62,15 @@ To copy the rows from a SQLite file into Postgres once, run this from the `backe
 
 Neon puts a free database to sleep after about five minutes without use, so the first request after a quiet spell is slow. The backend waits up to 10 seconds to connect and tries once more. If the database cannot be reached, `/runs` answers with a 503, `/health` reports the database as down, and `/classify` still answers but cannot save the run.
 
+## Retrieval
+
+The app finds notes to show the model from the files in `backend/app/knowledge/`. The setting `RETRIEVAL_METHOD` in `backend/app/config.py` chooses how:
+
+- `"overlap"` counts the words a headline shares with a note. This is the default.
+- `"bm25"` is a standard search score written by hand in `backend/app/engine.py`. It counts rare words for more than common ones. It has its own `BM25_THRESHOLD`, `BM25_K1` and `BM25_B`.
+
+Both use the same notes and the same word splitting, so only the scoring differs. The comparison is in `results/retrieval_offline.md` (no model calls) and `results/v4_scoring.csv` (one live scoring run). Before and after traces for four headlines are in `results/retrieval_before.md` and `results/retrieval_after.md`.
+
 ## The file you change to tune the assistant
 
 `backend/app/config.py`. It holds the prompt, the routing rules, the guardrails, the confidence floor and the token settings.
