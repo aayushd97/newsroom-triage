@@ -1,5 +1,0 @@
-gradio==6.30.0
-scikit-learn
-pandas
-requests
-pytest

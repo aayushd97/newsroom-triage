@@ -57,10 +57,10 @@ def test_score_returns_the_contract_shape(client):
 
 
 def test_health_reports_mode_and_never_the_key(client, monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "gsk_this_is_a_fake_test_key")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-test-key-not-real")
     d = client.get("/health").json()
     assert d["mode"] == "live" and d["key_present"] is True
-    assert "gsk_this_is_a_fake_test_key" not in client.get("/health").text
+    assert "fake-test-key-not-real" not in client.get("/health").text
     monkeypatch.delenv("GROQ_API_KEY")
     d = client.get("/health").json()
     assert d["mode"] == "demo" and d["key_present"] is False
