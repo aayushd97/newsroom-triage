@@ -86,3 +86,8 @@ KNOWLEDGE_THRESHOLD = 0.10
 
 MODEL = "openai/gpt-oss-120b"
 TEMPERATURE = 0
+
+# Groq free tier limits for this model, per minute. The app waits rather than
+# going over them. A 429 from Groq means slow down, not a bad key.
+REQUESTS_PER_MINUTE = 30
+TOKENS_PER_MINUTE = 8000

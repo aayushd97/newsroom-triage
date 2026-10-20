@@ -104,6 +104,27 @@ def _demo_classify(text):
     conf = min(0.35 + 0.15 * score, 0.95)
     return best, round(conf, 2)
 
+class RateLimited(RuntimeError):
+    """Groq answered 429. Not a bad key: wait retry_after seconds and try again."""
+    def __init__(self, retry_after):
+        super().__init__(f"rate limited by Groq, retry after {retry_after}s")
+        self.retry_after = retry_after
+
+_window = []   # [time, tokens] for each live call in the last minute
+
+def _pace(estimate):
+    """Wait until one more call fits inside the per-minute request and token limits."""
+    while True:
+        now = time.time()
+        _window[:] = [w for w in _window if now - w[0] < 60]
+        used = sum(w[1] for w in _window)
+        if not _window or (len(_window) < config.REQUESTS_PER_MINUTE
+                           and used + estimate <= config.TOKENS_PER_MINUTE):
+            entry = [now, estimate]
+            _window.append(entry)
+            return entry
+        time.sleep(max(0.1, 60 - (now - _window[0][0]) + 0.05))
+
 def _groq_classify(text, prompt, passages):
     import requests
     key = os.environ["GROQ_API_KEY"]
@@ -122,13 +143,22 @@ def _groq_classify(text, prompt, passages):
              'Reply with JSON only: {"category": "...", "confidence": 0.0}'},
         ],
     }
+    # Rough guess of the call's size: about 3 characters a token, plus the reply cap.
+    sent = sum(len(m["content"]) for m in body["messages"])
+    entry = _pace(sent // 3 + body["max_tokens"])
     r = requests.post("https://api.groq.com/openai/v1/chat/completions",
                       headers={"Authorization": f"Bearer {key}"},
                       json=body, timeout=60)
     if r.status_code == 429:
-        raise RuntimeError(r.headers.get("retry-after", "0"))
+        try:
+            wait = float(r.headers.get("retry-after", ""))
+        except ValueError:
+            wait = 0.0
+        raise RateLimited(wait)
     r.raise_for_status()
-    raw = r.json()["choices"][0]["message"]["content"]
+    data = r.json()
+    entry[1] = data.get("usage", {}).get("total_tokens", entry[1])
+    raw = data["choices"][0]["message"]["content"]
     return _parse(raw)
 
 def _parse(raw):
@@ -263,7 +293,14 @@ def score(golden):
     from sklearn.metrics import cohen_kappa_score
     rows, preds, truth = [], [], []
     for g in golden:
-        tr = classify(g["text"])
+        for attempt in range(4):
+            try:
+                tr = classify(g["text"])
+                break
+            except RateLimited as e:
+                if attempt == 3:
+                    raise
+                time.sleep(e.retry_after or 5)
         rows.append({"text": g["text"][:90], "expected": g["label"],
                      "official": g.get("official", ""), "got": tr.final, "ok": tr.final == g["label"],
                      "branch": tr.branch, "confidence": tr.confidence})
