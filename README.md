@@ -2,6 +2,10 @@
 
 Paste a news headline, get a category, see exactly how it decided.
 
+Live frontend: https://newsroom-triage-frontend.onrender.com/
+
+Live backend: https://newsroom-triage-backend.onrender.com
+
 Built for Week 2 of the AI and Machine Learning mentorship programme, Option C. It is two services that find each other through configuration.
 
 - `backend/` is a FastAPI service. It owns the model call, retrieval, guardrails and the database.
