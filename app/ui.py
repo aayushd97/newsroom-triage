@@ -54,7 +54,8 @@ def do_score(progress=gr.Progress()):
         return f"Expected 30 labelled items after the join on id, found {len(golden)}.", None
     s = engine.score(golden)
     head = (f"## {s['correct']} / {s['total']} correct\n\n"
-            f"Accuracy **{s['accuracy']*100:.1f}%**  ·  Cohen's kappa **{s['kappa']}**\n\n"
+            f"Accuracy **{s['accuracy']*100:.1f}%**  ·  Cohen's kappa **{s['kappa']}**"
+            f"  ·  Blocked **{s['blocked']}**\n\n"
             f"Mode: {'live model' if engine.live_mode() else 'demo stand-in, the prompt is ignored'}")
     df = pd.DataFrame(s["rows"])[["text", "expected", "official", "got", "ok", "confidence"]]
     return head, df

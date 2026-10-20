@@ -230,6 +230,7 @@ class Trace:
     ms: int = 0
 
 SAFE = "I am not able to answer that one."
+BLOCKED = "BLOCKED"   # how a blocked answer is counted when scoring
 
 def classify(headline):
     t0 = time.time()
@@ -301,13 +302,17 @@ def score(golden):
                 if attempt == 3:
                     raise
                 time.sleep(e.retry_after or 5)
+        # A blocked answer is its own label, so it counts against accuracy and
+        # kappa alike. No labels= list: every item stays in kappa, whatever it got.
+        got = BLOCKED if tr.blocked else tr.final
         rows.append({"text": g["text"][:90], "expected": g["label"],
-                     "official": g.get("official", ""), "got": tr.final, "ok": tr.final == g["label"],
+                     "official": g.get("official", ""), "got": got, "ok": got == g["label"],
                      "branch": tr.branch, "confidence": tr.confidence})
-        preds.append(tr.final)
+        preds.append(got)
         truth.append(g["label"])
     correct = sum(r["ok"] for r in rows)
-    k = cohen_kappa_score(truth, preds, labels=CATS) if len(set(truth)) > 1 else 0.0
+    k = cohen_kappa_score(truth, preds) if len(set(truth)) > 1 else 0.0
     return {"rows": rows, "correct": correct, "total": len(rows),
             "accuracy": round(correct / len(rows), 4) if rows else 0.0,
-            "kappa": round(float(k), 4)}
+            "kappa": round(float(k), 4),
+            "blocked": sum(p == BLOCKED for p in preds)}
