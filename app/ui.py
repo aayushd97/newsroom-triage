@@ -9,12 +9,16 @@ HERE = pathlib.Path(__file__).parent
 engine.init_db()
 
 def _golden():
+    """The thirty main items, scored against my Week 1 hand labels.
+    official_label is kept alongside so both can be reported."""
     p = HERE.parent / "week1_data.csv"
-    if not p.exists():
+    mine = HERE.parent / "data" / "my_labels.csv"
+    if not p.exists() or not mine.exists():
         return []
     df = pd.read_csv(p)
-    m = df[df["set"] == "main"]
-    return [{"text": r.text, "label": r.official_label} for r in m.itertuples()]
+    m = df[df["set"] == "main"].merge(pd.read_csv(mine), on="id", how="inner")
+    return [{"text": r.text, "label": r.my_label, "official": r.official_label}
+            for r in m.itertuples()]
 
 
 # ------------------------------------------------------------ page 1
@@ -45,12 +49,14 @@ def do_classify(headline):
 def do_score(progress=gr.Progress()):
     golden = _golden()
     if not golden:
-        return "week1_data.csv was not found next to the app.", None
+        return "week1_data.csv or data/my_labels.csv was not found next to the app.", None
+    if len(golden) != 30:
+        return f"Expected 30 labelled items after the join on id, found {len(golden)}.", None
     s = engine.score(golden)
     head = (f"## {s['correct']} / {s['total']} correct\n\n"
             f"Accuracy **{s['accuracy']*100:.1f}%**  ·  Cohen's kappa **{s['kappa']}**\n\n"
             f"Mode: {'live model' if engine.live_mode() else 'demo stand-in, the prompt is ignored'}")
-    df = pd.DataFrame(s["rows"])[["text", "expected", "got", "ok", "confidence"]]
+    df = pd.DataFrame(s["rows"])[["text", "expected", "official", "got", "ok", "confidence"]]
     return head, df
 
 

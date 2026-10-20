@@ -265,7 +265,7 @@ def score(golden):
     for g in golden:
         tr = classify(g["text"])
         rows.append({"text": g["text"][:90], "expected": g["label"],
-                     "got": tr.final, "ok": tr.final == g["label"],
+                     "official": g.get("official", ""), "got": tr.final, "ok": tr.final == g["label"],
                      "branch": tr.branch, "confidence": tr.confidence})
         preds.append(tr.final)
         truth.append(g["label"])
