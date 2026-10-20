@@ -110,7 +110,11 @@ def _pg_connect():
     import psycopg
     for attempt in (1, 2):
         try:
-            return psycopg.connect(_url(), connect_timeout=CONNECT_TIMEOUT)
+            # prepare_threshold=None switches prepared statements off. Neon's pooled
+            # (PgBouncer) endpoint supports them in current versions, but they buy
+            # nothing here and switching them off rules out a whole class of errors.
+            return psycopg.connect(_url(), connect_timeout=CONNECT_TIMEOUT,
+                                   prepare_threshold=None)
         except psycopg.OperationalError as e:
             if (e.sqlstate or "").startswith("28"):     # bad login, retrying will not help
                 raise DatabaseUnavailable("the database rejected the login") from None
